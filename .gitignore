@@ -60,6 +60,11 @@ build/
 .DS_Store
 Thumbs.db
 
+### Environment Variables ###
+.env
+.env.local
+.env.*.local
+
 ### Application Properties (if sensitive) ###
 # Uncomment if you have sensitive config files
 # src/main/resources/application-local.properties
