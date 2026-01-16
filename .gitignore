@@ -66,6 +66,5 @@ Thumbs.db
 .env.*.local
 
 ### Application Properties (if sensitive) ###
-# Uncomment if you have sensitive config files
-# src/main/resources/application-local.properties
-# src/main/resources/application-prod.properties
+src/main/resources/application-local.properties
+src/main/resources/application-prod.properties

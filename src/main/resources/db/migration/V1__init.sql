@@ -1,7 +1,7 @@
 -- Flyway migration V1: Initial schema creation
 -- Creates tables for Event, Incident, and IdempotencyKey
 
--- Required for gen_random_uuid()
+-- Enable required extension for UUID generation
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 -- Events table: stores individual operational events
@@ -13,8 +13,8 @@ CREATE TABLE events (
     title VARCHAR(500) NOT NULL,
     description TEXT,
     fingerprint VARCHAR(255) NOT NULL,
-    occurred_at TIMESTAMPTZ NOT NULL,
-    received_at TIMESTAMPTZ NOT NULL
+    occurred_at TIMESTAMP NOT NULL,
+    received_at TIMESTAMP NOT NULL
 );
 
 -- Indexes for events table
@@ -29,10 +29,10 @@ CREATE TABLE incidents (
     severity VARCHAR(10) NOT NULL,
     status VARCHAR(20) NOT NULL,
     fingerprint VARCHAR(255) NOT NULL,
-    first_seen_at TIMESTAMPTZ NOT NULL,
-    last_seen_at TIMESTAMPTZ NOT NULL,
+    first_seen_at TIMESTAMP NOT NULL,
+    last_seen_at TIMESTAMP NOT NULL,
     event_count BIGINT NOT NULL,
-    ack_deadline_at TIMESTAMPTZ
+    ack_deadline_at TIMESTAMP
 );
 
 -- Indexes for incidents table
@@ -45,5 +45,5 @@ CREATE TABLE idempotency_keys (
     key VARCHAR(255) PRIMARY KEY,
     request_hash VARCHAR(255) NOT NULL,
     incident_id UUID,
-    created_at TIMESTAMPTZ NOT NULL
+    created_at TIMESTAMP NOT NULL
 );
