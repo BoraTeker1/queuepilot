@@ -10,14 +10,13 @@ QueuePilot is an SLA-aware incident triage and auto-remediation platform that in
 - **Incident Management**: Tracks incident lifecycle (OPEN → ACKED → ESCALATED → RESOLVED) with acknowledgment deadlines
 - **Idempotency**: Request-level deduplication using idempotency keys to prevent double-processing
 - **PostgreSQL**: Primary data store for events, incidents, and audit logs
-- **Redis**: Idempotency key storage, rate limiting, and hot incident state caching
 - **Scheduled Jobs**: Background workers for SLA monitoring and escalation
 
 ## Quickstart
 
 ### Prerequisites
 
-- Java 25+
+- Java 17+
 - Maven 3.8+
 - Docker and Docker Compose
 
@@ -27,7 +26,7 @@ QueuePilot is an SLA-aware incident triage and auto-remediation platform that in
 docker-compose up -d
 ```
 
-This starts PostgreSQL (port 5432) and Redis (port 6379) with persistent volumes.
+This starts PostgreSQL (port 5432) with persistent volumes.
 
 ### Run Application
 
@@ -103,6 +102,49 @@ Response shows the same incident with `eventCount: 2`:
 }
 ```
 
+### Post Event with Idempotency-Key
+
+Sending the same request with the same `Idempotency-Key` returns the same incident without double-processing:
+
+```bash
+curl -X POST http://localhost:8080/api/events \
+  -H "Content-Type: application/json" \
+  -H "Idempotency-Key: demo-idem-001" \
+  -d '{
+    "source": "pagerduty",
+    "service": "payment-service",
+    "severity": "P1",
+    "title": "Payment processing timeout",
+    "description": "Payment requests timing out after 30s",
+    "fingerprint": "payment-timeout-001"
+  }'
+```
+
+Re-run the same command to verify the incident ID stays the same.
+
+### Escalation Demo (SLA breach)
+
+Create a P0 incident and wait >5 minutes (or temporarily shorten SLA in code) to see status flip to `ESCALATED`:
+
+```bash
+curl -X POST http://localhost:8080/api/events \
+  -H "Content-Type: application/json" \
+  -d '{
+    "source": "pagerduty",
+    "service": "payment-service",
+    "severity": "P0",
+    "title": "Payment outage",
+    "description": "Critical outage",
+    "fingerprint": "payment-outage-001"
+  }'
+```
+
+Then query the incident by ID after the SLA window:
+
+```bash
+curl http://localhost:8080/api/incidents/{incidentId}
+```
+
 ### Fetch Incident by ID
 
 ```bash
@@ -119,7 +161,6 @@ curl "http://localhost:8080/api/incidents?status=OPEN"
 
 - **Spring Boot 4.0.1** - Application framework
 - **PostgreSQL** - Primary database
-- **Redis** - Caching and rate limiting
 - **Flyway** - Database migrations
 - **Testcontainers** - Integration testing
 

@@ -5,6 +5,9 @@ import com.queuepilot.queuepilot.TestcontainersConfiguration;
 import com.queuepilot.queuepilot.api.dto.EventIngestRequest;
 import com.queuepilot.queuepilot.api.dto.IncidentResponse;
 import com.queuepilot.queuepilot.domain.Severity;
+import com.queuepilot.queuepilot.repo.EventRepository;
+import com.queuepilot.queuepilot.repo.IdempotencyKeyRepository;
+import com.queuepilot.queuepilot.repo.IncidentRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -20,6 +23,8 @@ import java.time.Instant;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 /**
  * Integration tests for EventController.
@@ -34,29 +39,58 @@ class EventControllerIntegrationTest {
     @Autowired
     private MockMvc mockMvc;
 
+    @Autowired
+    private EventRepository eventRepository;
+
+    @Autowired
+    private IncidentRepository incidentRepository;
+
+    @Autowired
+    private IdempotencyKeyRepository idempotencyKeyRepository;
+
     private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
 
     @BeforeEach
     void setUp() {
-        // TODO: Clean up test data before each test
+        idempotencyKeyRepository.deleteAll();
+        eventRepository.deleteAll();
+        incidentRepository.deleteAll();
     }
 
     @Test
     void dedup_shouldIncrementEventCount() throws Exception {
-        // TODO: Implement deduplication test
-        // 1. Send first event with fingerprint
-        // 2. Verify incident created with eventCount = 1
-        // 3. Send duplicate event with same fingerprint
-        // 4. Verify same incident returned with eventCount = 2
+        String fingerprint = "dedupe-test-fp";
+
+        MvcResult firstResult = postEvent(createEventRequestWithFingerprint(fingerprint));
+        IncidentResponse firstIncident = parseIncidentResponse(firstResult);
+
+        assertNotNull(firstIncident.getIncidentId());
+        assertEquals(1, firstIncident.getEventCount());
+
+        MvcResult secondResult = postEvent(createEventRequestWithFingerprint(fingerprint));
+        IncidentResponse secondIncident = parseIncidentResponse(secondResult);
+
+        assertEquals(firstIncident.getIncidentId(), secondIncident.getIncidentId());
+        assertEquals(2, secondIncident.getEventCount());
     }
 
     @Test
     void idempotencyKey_shouldReturnSameIncident() throws Exception {
-        // TODO: Implement idempotency test
-        // 1. Send event with Idempotency-Key header
-        // 2. Store the returned incident ID
-        // 3. Send same event again with same Idempotency-Key header
-        // 4. Verify same incident ID is returned
+        String idempotencyKey = "idempotency-test-key";
+
+        EventIngestRequest request = createEventRequest();
+        request.setOccurredAt(Instant.parse("2024-01-01T00:00:00Z"));
+        MvcResult firstResult = postEventWithIdempotencyKey(request, idempotencyKey);
+        IncidentResponse firstIncident = parseIncidentResponse(firstResult);
+
+        assertNotNull(firstIncident.getIncidentId());
+        assertEquals(1, firstIncident.getEventCount());
+
+        MvcResult secondResult = postEventWithIdempotencyKey(request, idempotencyKey);
+        IncidentResponse secondIncident = parseIncidentResponse(secondResult);
+
+        assertEquals(firstIncident.getIncidentId(), secondIncident.getIncidentId());
+        assertEquals(firstIncident.getEventCount(), secondIncident.getEventCount());
     }
 
     // Helper methods

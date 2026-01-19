@@ -21,6 +21,8 @@ public interface IncidentRepository extends JpaRepository<Incident, UUID> {
         String fingerprint, 
         List<IncidentStatus> statuses
     );
+
+    List<Incident> findByStatus(IncidentStatus status);
     
     List<Incident> findByStatusAndAckDeadlineAtBefore(IncidentStatus status, Instant deadline);
 }
