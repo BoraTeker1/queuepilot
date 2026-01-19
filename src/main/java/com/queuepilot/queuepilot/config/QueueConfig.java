@@ -7,5 +7,5 @@ import org.springframework.context.annotation.Configuration;
  */
 @Configuration
 public class QueueConfig {
-    // TODO: Configure queue infrastructure (RabbitMQ/Kafka/Postgres queue)
+    // TODO: Configure queue infrastructure
 }

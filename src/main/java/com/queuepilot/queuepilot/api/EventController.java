@@ -15,6 +15,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -26,9 +27,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/events")
 @Tag(name = "Events", description = "Event ingestion endpoints")
 public class EventController {
-    
     private final TriageService triageService;
-    
     public EventController(TriageService triageService) {
         this.triageService = triageService;
     }
@@ -41,8 +40,10 @@ public class EventController {
             @ApiResponse(responseCode = "400", description = "Validation error",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     })
-    public ResponseEntity<IncidentResponse> ingestEvent(@Valid @RequestBody EventIngestRequest request) {
-        IncidentResponse response = triageService.ingestEvent(request);
+    public ResponseEntity<IncidentResponse> ingestEvent(
+            @Valid @RequestBody EventIngestRequest request,
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey) {
+        IncidentResponse response = triageService.ingestEvent(request, idempotencyKey);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 }

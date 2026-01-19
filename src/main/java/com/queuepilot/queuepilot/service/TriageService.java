@@ -20,7 +20,7 @@ public interface TriageService {
      * @param request The event ingestion request
      * @return The incident response (new or existing)
      */
-    IncidentResponse ingestEvent(EventIngestRequest request);
+    IncidentResponse ingestEvent(EventIngestRequest request, String idempotencyKey);
     
     /**
      * Retrieves an incident by its ID.

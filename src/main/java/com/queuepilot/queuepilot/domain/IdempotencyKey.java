@@ -28,7 +28,7 @@ public class IdempotencyKey {
     private Instant createdAt;
 
     // Default constructor for JPA
-    protected IdempotencyKey() {
+    public IdempotencyKey() {
     }
 
     // Getters and setters

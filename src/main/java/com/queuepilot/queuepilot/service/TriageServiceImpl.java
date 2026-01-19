@@ -4,6 +4,7 @@ import com.queuepilot.queuepilot.api.dto.EventIngestRequest;
 
 import com.queuepilot.queuepilot.api.dto.IncidentResponse;
 import com.queuepilot.queuepilot.domain.Event;
+import com.queuepilot.queuepilot.domain.IdempotencyKey;
 import com.queuepilot.queuepilot.domain.Incident;
 import com.queuepilot.queuepilot.domain.IncidentStatus;
 import com.queuepilot.queuepilot.domain.Severity;
@@ -13,15 +14,20 @@ import com.queuepilot.queuepilot.repo.EventRepository;
 import com.queuepilot.queuepilot.repo.IdempotencyKeyRepository;
 import com.queuepilot.queuepilot.repo.IncidentRepository;
 import com.queuepilot.queuepilot.util.EventFingerprintUtils;
+import com.queuepilot.queuepilot.util.IdempotencyUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+
+import static org.springframework.http.HttpStatus.CONFLICT;
+import static org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR;
 
 /**
  * Skeleton implementation of TriageService.
@@ -36,10 +42,8 @@ public class TriageServiceImpl implements TriageService {
 
     private final EventRepository eventRepository;
 
-
-
     @Override
-    public IncidentResponse ingestEvent(EventIngestRequest request) {
+    public IncidentResponse ingestEvent(EventIngestRequest request, String idempotencyKey) {
         logger.debug("TriageService.ingestEvent called");
         Instant now = Instant.now();
         Instant occurredAt = request.getOccurredAt() != null ? request.getOccurredAt() : now;
@@ -51,6 +55,26 @@ public class TriageServiceImpl implements TriageService {
                     request.getDescription()
             );
         }
+        String requestHash = null;
+        if (idempotencyKey != null && !idempotencyKey.isBlank()) {
+            String body = buildIdempotencyBody(request, occurredAt);
+            requestHash = IdempotencyUtils.computeRequestHash("POST", "/api/events", body);
+            Optional<IdempotencyKey> existingKey = idempotencyKeyRepository.findById(idempotencyKey);
+            if (existingKey.isPresent()) {
+                IdempotencyKey stored = existingKey.get();
+                if (!requestHash.equals(stored.getRequestHash())) {
+                    throw new ResponseStatusException(CONFLICT, "Idempotency-Key reused with different request");
+                }
+                UUID existingIncidentId = stored.getIncidentId();
+                if (existingIncidentId == null) {
+                    throw new ResponseStatusException(INTERNAL_SERVER_ERROR, "Idempotency-Key missing incident reference");
+                }
+                return incidentRepository.findById(existingIncidentId)
+                        .map(IncidentMapper::toResponse)
+                        .orElseThrow(() -> new ResponseStatusException(INTERNAL_SERVER_ERROR, "Incident not found for Idempotency-Key"));
+            }
+        }
+
         List<IncidentStatus> activeStatuses = List.of(IncidentStatus.OPEN, IncidentStatus.ESCALATED);
         Optional<Incident> existingIncident =
                 incidentRepository.findTopByServiceAndFingerprintAndStatusInOrderByLastSeenAtDesc(
@@ -80,6 +104,14 @@ public class TriageServiceImpl implements TriageService {
         eventRepository.save(event);
 
         incidentRepository.save(incident);
+        if (idempotencyKey != null && !idempotencyKey.isBlank()) {
+            IdempotencyKey key = new IdempotencyKey();
+            key.setKey(idempotencyKey);
+            key.setRequestHash(requestHash);
+            key.setIncidentId(incident.getId());
+            key.setCreatedAt(now);
+            idempotencyKeyRepository.save(key);
+        }
         return IncidentMapper.toResponse(incident);
     }
 
@@ -112,6 +144,22 @@ public class TriageServiceImpl implements TriageService {
             default -> sla = Duration.ofHours(1);
         }
         return baseTime.plus(sla);
+    }
+
+    private String buildIdempotencyBody(EventIngestRequest request, Instant occurredAt) {
+        StringBuilder builder = new StringBuilder();
+        builder.append("source=").append(nullToEmpty(request.getSource())).append('|');
+        builder.append("service=").append(nullToEmpty(request.getService())).append('|');
+        builder.append("severity=").append(request.getSeverity() != null ? request.getSeverity().name() : "").append('|');
+        builder.append("title=").append(nullToEmpty(request.getTitle())).append('|');
+        builder.append("description=").append(nullToEmpty(request.getDescription())).append('|');
+        builder.append("fingerprint=").append(nullToEmpty(request.getFingerprint())).append('|');
+        builder.append("occurredAt=").append(occurredAt != null ? occurredAt.toString() : "");
+        return builder.toString();
+    }
+
+    private String nullToEmpty(String value) {
+        return value == null ? "" : value;
     }
 
 
