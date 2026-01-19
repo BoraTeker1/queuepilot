@@ -57,7 +57,7 @@ public class Event {
     private Instant receivedAt;
 
     // Default constructor for JPA
-    protected Event() {
+    public Event() {
     }
 
     // Getters and setters

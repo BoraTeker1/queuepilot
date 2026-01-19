@@ -1,13 +1,26 @@
 package com.queuepilot.queuepilot.service;
 
 import com.queuepilot.queuepilot.api.dto.EventIngestRequest;
+
 import com.queuepilot.queuepilot.api.dto.IncidentResponse;
+import com.queuepilot.queuepilot.domain.Event;
+import com.queuepilot.queuepilot.domain.Incident;
 import com.queuepilot.queuepilot.domain.IncidentStatus;
+import com.queuepilot.queuepilot.domain.Severity;
+import com.queuepilot.queuepilot.mapper.EventMapper;
+import com.queuepilot.queuepilot.mapper.IncidentMapper;
+import com.queuepilot.queuepilot.repo.EventRepository;
+import com.queuepilot.queuepilot.repo.IdempotencyKeyRepository;
+import com.queuepilot.queuepilot.repo.IncidentRepository;
+import com.queuepilot.queuepilot.util.EventFingerprintUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -18,10 +31,56 @@ public class TriageServiceImpl implements TriageService {
 
     private static final Logger logger = LoggerFactory.getLogger(TriageServiceImpl.class);
 
+    private final IncidentRepository incidentRepository;
+    private final IdempotencyKeyRepository idempotencyKeyRepository;
+
+    private final EventRepository eventRepository;
+
+
+
     @Override
     public IncidentResponse ingestEvent(EventIngestRequest request) {
         logger.debug("TriageService.ingestEvent called");
-        throw new UnsupportedOperationException("TriageService.ingestEvent not implemented yet");
+        Instant now = Instant.now();
+        Instant occurredAt = request.getOccurredAt() != null ? request.getOccurredAt() : now;
+        String fingerprint = request.getFingerprint();
+        if (fingerprint == null || fingerprint.isBlank()) {
+            fingerprint = EventFingerprintUtils.computeFingerprint(
+                    request.getService(),
+                    request.getTitle(),
+                    request.getDescription()
+            );
+        }
+        List<IncidentStatus> activeStatuses = List.of(IncidentStatus.OPEN, IncidentStatus.ESCALATED);
+        Optional<Incident> existingIncident =
+                incidentRepository.findTopByServiceAndFingerprintAndStatusInOrderByLastSeenAtDesc(
+                        request.getService(),
+                        fingerprint,
+                        activeStatuses
+                );
+        Incident incident;
+        if (existingIncident.isPresent()) {
+            incident = existingIncident.get();
+            incident.setEventCount(incident.getEventCount() + 1);
+            incident.setLastSeenAt(now);
+        } else {
+            incident = new Incident();
+            incident.setService(request.getService());
+            incident.setSeverity(request.getSeverity());
+            incident.setStatus(IncidentStatus.OPEN);
+            incident.setFingerprint(fingerprint);
+            incident.setFirstSeenAt(now);
+            incident.setLastSeenAt(now);
+            incident.setEventCount(1);
+            incident.setAckDeadlineAt(calculateAckDeadline(request.getSeverity(), now));
+        }
+
+        Event event = new Event();
+        EventMapper.populateEvent(event, request, fingerprint, occurredAt, now);
+        eventRepository.save(event);
+
+        incidentRepository.save(incident);
+        return IncidentMapper.toResponse(incident);
     }
 
     @Override
@@ -35,4 +94,27 @@ public class TriageServiceImpl implements TriageService {
         logger.debug("TriageService.getIncidentsByStatus called for status={}", status);
         throw new UnsupportedOperationException("TriageService.getIncidentsByStatus not implemented yet");
     }
+
+
+    public TriageServiceImpl(IncidentRepository incidentRepository, EventRepository eventRepository, IdempotencyKeyRepository idempotencyKeyRepository){
+        this.incidentRepository = incidentRepository;
+        this.idempotencyKeyRepository = idempotencyKeyRepository;
+        this.eventRepository = eventRepository;
+    }
+
+    private Instant calculateAckDeadline(Severity severity, Instant baseTime) {
+        Duration sla;
+        switch (severity) {
+            case P0 -> sla = Duration.ofMinutes(5);
+            case P1 -> sla = Duration.ofMinutes(15);
+            case P2 -> sla = Duration.ofHours(1);
+            case P3 -> sla = Duration.ofHours(24);
+            default -> sla = Duration.ofHours(1);
+        }
+        return baseTime.plus(sla);
+    }
+
+
+
+
 }

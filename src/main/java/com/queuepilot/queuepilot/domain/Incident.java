@@ -57,7 +57,7 @@ public class Incident {
     private Instant ackDeadlineAt;
 
     // Default constructor for JPA
-    protected Incident() {
+    public Incident() {
     }
 
     // Getters and setters

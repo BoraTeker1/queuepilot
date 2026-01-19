@@ -5,5 +5,15 @@ package com.queuepilot.queuepilot.util;
  * Used for deduplication and clustering of similar events.
  */
 public class EventFingerprintUtils {
-    // TODO: Add methods for generating event fingerprints
+
+    private EventFingerprintUtils() {
+    }
+
+    /**
+     * Compute a stable fingerprint for an event.
+     * TODO: Implement fingerprinting strategy (e.g., hash of service + title + description).
+     */
+    public static String computeFingerprint(String service, String title, String description) {
+        throw new UnsupportedOperationException("EventFingerprintUtils.computeFingerprint not implemented yet");
+    }
 }
